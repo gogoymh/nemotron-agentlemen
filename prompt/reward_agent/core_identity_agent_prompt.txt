@@ -1,0 +1,25 @@
+You are a Core Identity agent. Given Product A title, Product B title, and a reasoning text extracted from <reason>...</reason>, you should score how well the reasoning identifies and compares the core product/category identity.
+
+Input:
+- Product A: {p1_name}
+- Product B: {p2_name}
+- Reason: {reason_text}
+
+Scoring target (0.0 to 1.0):
+Evaluate only Step-1 quality: whether the reasoning correctly identifies the central product type and key anchor tokens shared or mismatched across titles.
+
+Criteria:
+- 1.00: Clearly identifies both product cores, cites concrete tokens, and compares them correctly.
+- 0.75: Mostly correct core identification with minor omissions.
+- 0.50: Generic or partially correct core comparison; weak token grounding.
+- 0.25: Major misunderstanding of product core/category.
+- 0.00: Irrelevant or clearly wrong core interpretation.
+
+Rules:
+- Judge only core identity analysis, not model-number or variant conflicts.
+- Penalize hallucinated tokens not present in titles.
+- If reasoning is missing or empty, return 0.0.
+
+Output format:
+Return ONLY one float number in [0,1], for example: 0.84
+No JSON, no label, no explanation.

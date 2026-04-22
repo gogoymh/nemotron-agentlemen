@@ -1,0 +1,91 @@
+# Stage C — DataDesigner config (data_plan.md §DataDesigner).
+# Model = Nemotron-3 Super 120B, served via a local vLLM OpenAI-compatible
+# endpoint (src/serve.py --model nemotron-120b). API key is ignored by vLLM
+# but DataDesigner expects the field.
+
+model:
+  alias: nemotron-super
+  hf_id: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16
+  provider: openai                                 # vLLM speaks the OpenAI API
+  base_url: http://localhost:8000/v1
+  api_key_env: NEMOTRON_API_KEY                    # usually "EMPTY" for vLLM
+  # Reasoning ON for C.1/C.2 (evidence quality), OFF for C.3 (fast hard-pair).
+  default_chat_template_kwargs:
+    enable_thinking: true
+    reasoning_budget: 512
+  sampling:
+    temperature: 0.7
+    top_p: 0.95
+    max_tokens: 1024
+
+io:
+  # Inputs produced upstream.
+  labeled_jsonl: dataset/labeled/labeled.jsonl      # 12k labeled (label + decision + evidence)
+  curated_jsonl: dataset/v2/raw_curated/full.jsonl  # Stage A output (~1.1M clean pool)
+  v1_sft_drop_jsonl: dataset/v1/sft/_dropped.jsonl  # 1,134 FN/FP rows v1 drops for SFT
+  v2_out_dir: dataset/v2/synth                      # C.1/C.2/C.3 outputs land here
+
+# ------------------------------------------------------------------
+# C.1 — Evidence regeneration (rescue v1 SFT drops).
+# For every (p1_name, p2_name, human_label) row, regenerate a reason/evidence
+# conditioned on the *human* label so the SFT chain is consistent.
+# ------------------------------------------------------------------
+c1_evidence_regen:
+  out_jsonl: dataset/v2/synth/c1_regenerated.jsonl
+  source_tag: regenerated
+  batch_size: 64
+  # Only rows where v1 dropped: label != decision (model disagreed with human).
+  filter:
+    require_label_ne_decision: true
+
+# ------------------------------------------------------------------
+# C.2 — Pseudo-labeling on Stage A curated pool (~1.1M).
+# Pair each curated listing with a sibling candidate (same brand nearest
+# neighbour by char-tfidf) and ask Nemotron to judge + produce evidence.
+# Only High-confidence rows are kept with source="pseudo".
+# ------------------------------------------------------------------
+c2_pseudo_label:
+  out_jsonl: dataset/v2/synth/c2_pseudo.jsonl
+  source_tag: pseudo
+  # Target volume after confidence filtering. Oversample to compensate.
+  target_high_conf: 500000
+  oversample_factor: 3
+  sibling_sampler:
+    strategy: brand_nn_tfidf        # nearest-neighbour inside brand
+    k: 4                            # 4 candidates per anchor; pick 1 hard
+  confidence_bins:
+    high_min: 0.85
+    low_max: 0.40
+  # Blend weight (data_plan.md) applied downstream at Stage D.
+  blend_weight: 0.6
+
+# ------------------------------------------------------------------
+# C.3 — Hard-pair synthesis (optional, Nano §SFT 5-sample generate).
+# Seed from curated pool; model emits variants that differ only in option /
+# promo → hard-neg / hard-pos mining.
+# ------------------------------------------------------------------
+c3_hard_pairs:
+  out_jsonl: dataset/v2/synth/c3_hard_pairs.jsonl
+  source_tag: synthetic_hard
+  num_seeds: 100000
+  variants_per_seed: 5              # Nano §SFT recipe
+  kinds: [hard_neg, hard_pos]
+  blend_weight: 0.7
+
+# ------------------------------------------------------------------
+# C.4 — Post-hoc judge + validator (applied to C.1/C.2/C.3 outputs).
+# Mirrors Nano §SFT R1 filter.
+# ------------------------------------------------------------------
+c4_judge_validator:
+  inputs:
+    - dataset/v2/synth/c1_regenerated.jsonl
+    - dataset/v2/synth/c2_pseudo.jsonl
+    - dataset/v2/synth/c3_hard_pairs.jsonl
+  out_jsonl: dataset/v2/synth/c4_validated.jsonl
+  judge_min_agreement: 0.67         # 2/3 samples must agree
+  judge_num_samples: 3
+  # Structural check on <reason>...</reason><label>0|1</label>.
+  require_label_tag: true
+  require_reason_tag: true
+  min_reason_chars: 20
+  max_reason_chars: 1500

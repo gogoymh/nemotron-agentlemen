@@ -1,0 +1,290 @@
+# GRPO config for product-match RL (copy_lr.md §4).
+#
+# Schema mirrors NeMo-RL's examples/configs/grpo_math_1B.yaml (v0.4.0). The
+# entry point (experiment/rl_from_sft.py) builds the task_data_processors
+# and task_to_env dicts programmatically — there is no string-registry for
+# either in this NeMo-RL version, so the YAML does NOT carry an env "target"
+# or processor "name" field.
+#
+# Dataset:
+#   data.dataset_name = "ResponseDataset" → reads our JSONL files directly
+#   (input_key="input", output_key="output" — see src/data_prep/csv_to_rl_jsonl.py).
+#
+# Judge:
+#   env.product_match is passed to ProductMatchRewardEnvironment.__init__.
+#   The 120B judge server lives on GPUs 4-7 (experiment/judge_server.sh);
+#   training uses GPUs 0-3.
+#
+# Hyperparameter mapping (TRL-style → NeMo-RL):
+#   per_device_bs=4, grad_accum=4, 4 GPUs → train_global_batch_size=64, micro=4
+#   num_generations=4     → grpo.num_generations_per_prompt = 4
+#   seq_len=1024          → policy.max_total_sequence_length = 1024
+#   lr=5e-5               → optimizer.lr
+#   grad_norm=0.1         → max_grad_norm / clip_grad
+#   save_step=100         → checkpointing.save_period
+#   epoch=1               → grpo.max_num_epochs = 1
+#   LoRA r=32 α=64 drop=0.05 target=linear_qkv
+
+grpo:
+  num_prompts_per_step: 8           # 8 prompts × 4 gens = 32 per step
+  num_generations_per_prompt: 4
+  max_rollout_turns: 1
+  max_num_epochs: 1
+  max_num_steps: 500                # 4000 training rows / 8 = 500 steps ≈ 1 epoch
+  normalize_rewards: true
+  use_leave_one_out_baseline: true
+  val_period: 100
+  val_at_start: false
+  overlong_filtering: false
+  max_val_samples: 256
+  val_batch_size: 32
+  seed: 42
+  use_dynamic_sampling: false
+  dynamic_sampling_max_gen_batches: 10
+  batch_multiplier: 1
+  reward_shaping:
+    enabled: false
+    overlong_buffer_length: 128
+    overlong_buffer_penalty: 1
+    max_response_length: ${policy.max_total_sequence_length}
+  reward_scaling:
+    enabled: false
+    source_min: 0.0
+    source_max: 1.0
+    target_min: 0.0
+    target_max: 1.0
+  async_grpo:
+    enabled: false
+    max_trajectory_age_steps: 1
+    in_flight_weight_updates: false
+    recompute_kv_cache_after_weight_updates: false
+
+loss_fn:
+  reference_policy_kl_penalty: 0.01
+  reference_policy_kl_type: "k3"
+  kl_input_clamp_value: 20.0
+  kl_output_clamp_value: 10.0
+  ratio_clip_min: 0.2
+  ratio_clip_max: 0.28
+  ratio_clip_c: null
+  use_on_policy_kl_approximation: false
+  use_importance_sampling_correction: false
+  truncated_importance_sampling_ratio: null
+  sequence_level_importance_ratios: false
+  token_level_loss: true
+  force_on_policy_ratio: false
+
+checkpointing:
+  enabled: true
+  checkpoint_dir: "artifacts/rl/nemotron-30b/checkpoints"
+  metric_name: "val:total_reward/mean"
+  higher_is_better: true
+  keep_top_k: 3
+  save_period: 100
+  checkpoint_must_save_by: null
+  model_save_format: "safetensors"
+  save_consolidated: false
+
+policy:
+  # HF-format SFT checkpoint produced by experiment/merge_lora.sh — that
+  # script merges the Megatron-Bridge LoRA adapter into the base weights
+  # and exports to HF safetensors at this path. NeMo-RL converts it back
+  # to Megatron internally on first run.
+  model_name: "artifacts/sft/nemotron-30b/hf-iter_0001875"
+  tokenizer:
+    # Use the tokenizer bundled with the exported SFT HF dir (same
+    # chat template the SFT run learned against).
+    name: ${policy.model_name}
+    chat_template_kwargs: null
+  hf_config_overrides: {}
+  train_global_batch_size: 32
+  train_micro_batch_size: 4
+  generation_batch_size: 16
+  logprob_batch_size: 4
+  max_total_sequence_length: 1024
+  precision: "bfloat16"
+  logprob_chunk_size: null
+  offload_optimizer_for_logprob: false
+
+  dtensor_cfg:
+    _v2: true
+    enabled: false
+    cpu_offload: false
+    sequence_parallel: false
+    activation_checkpointing: false
+    tensor_parallel_size: 1
+    context_parallel_size: 1
+    custom_parallel_plan: null
+
+  # 4×H100 training: TP=2, PP=2, CP=1, DP=1 → EP must be ≤ DP = 1.
+  megatron_cfg:
+    enabled: true
+    empty_unused_memory_level: 1
+    activation_checkpointing: true           # recompute activations — big memory win
+    # converter_type left unset — NeMo-RL auto-detects from the HF config.
+    tensor_model_parallel_size: 2
+    expert_tensor_parallel_size: 1
+    expert_model_parallel_size: 1
+    pipeline_model_parallel_size: 2
+    num_layers_in_first_pipeline_stage: null
+    num_layers_in_last_pipeline_stage: null
+    context_parallel_size: 1
+    pipeline_dtype: ${policy.precision}
+    sequence_parallel: true
+    freeze_moe_router: true
+    moe_router_dtype: "fp64"
+    moe_router_load_balancing_type: "none"
+    moe_router_bias_update_rate: 0.0
+    moe_permute_fusion: false
+    apply_rope_fusion: true
+    bias_activation_fusion: false  # Nemotron-H activation isn't gelu/swiglu/quick_geglu
+    defer_fp32_logits: false
+    moe_per_layer_logging: false
+
+    optimizer:
+      optimizer: "adam"
+      lr: 5.0e-5
+      min_lr: 5.0e-6
+      weight_decay: 0.0
+      bf16: true
+      fp16: false
+      params_dtype: "float32"
+      adam_beta1: 0.9
+      adam_beta2: 0.999
+      adam_eps: 1e-8
+      sgd_momentum: 0.9
+      use_distributed_optimizer: true
+      use_precision_aware_optimizer: true
+      clip_grad: ${policy.max_grad_norm}
+      optimizer_cpu_offload: true              # offload Adam states to host RAM
+      optimizer_offload_fraction: 1.0
+
+    scheduler:
+      start_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
+      end_weight_decay: ${policy.megatron_cfg.optimizer.weight_decay}
+      weight_decay_incr_style: "constant"
+      lr_decay_style: "constant"
+      lr_decay_iters: 250
+      lr_warmup_iters: 10
+      lr_warmup_init: 5.0e-7
+
+    distributed_data_parallel_config:
+      grad_reduce_in_fp32: false
+      overlap_grad_reduce: true
+      overlap_param_gather: true
+      use_custom_fsdp: false
+      data_parallel_sharding_strategy: "optim_grads_params"
+
+    fp8_cfg: null
+    env_vars: null
+
+  dynamic_batching:
+    enabled: false
+    train_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.train_micro_batch_size}}
+    logprob_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.logprob_batch_size}}
+    sequence_length_round: 64
+
+  sequence_packing:
+    enabled: false
+    train_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.train_micro_batch_size}}
+    logprob_mb_tokens: ${mul:${policy.max_total_sequence_length}, ${policy.logprob_batch_size}}
+    algorithm: "modified_first_fit_decreasing"
+    sequence_length_round: 64
+
+  make_sequence_length_divisible_by: 1
+  max_grad_norm: 0.1
+
+  # When megatron_cfg.enabled=true, these dtensor-style optimizer/scheduler
+  # blocks are unused — Megatron's own optimizer lives under megatron_cfg.
+  optimizer: null
+  scheduler: null
+
+  generation:
+    backend: "vllm"
+    max_new_tokens: 512
+    temperature: 1.0
+    top_p: 1.0
+    top_k: null
+    stop_token_ids: null
+    stop_strings: ["</label>"]
+    vllm_cfg:
+      async_engine: false
+      precision: ${policy.precision}
+      kv_cache_dtype: "auto"
+      tensor_parallel_size: 2
+      pipeline_parallel_size: 1
+      expert_parallel_size: 1
+      gpu_memory_utilization: 0.2              # reserve more VRAM for training weights+grads
+      max_model_len: ${policy.max_total_sequence_length}
+      enforce_eager: false
+      use_deep_gemm: false
+      num_last_layers_in_bf16: 0
+      num_first_layers_in_bf16: 0
+      enable_vllm_metrics_logger: true
+      vllm_metrics_logger_interval: 0.5
+    vllm_kwargs: {}
+    colocated:
+      enabled: true
+      resources:
+        gpus_per_node: null
+        num_nodes: null
+
+# LoRA adapter — target `linear_qkv` to stay compatible with the fused QKV
+# adapter that sft_from_copy.py trained. The Megatron-Bridge LoRA class is
+# picked up by NeMo-RL's peft loader when `peft._target_` is set.
+peft:
+  _target_: "megatron.bridge.peft.lora.LoRA"
+  target_modules: ["linear_qkv"]
+  dim: 32
+  alpha: 64
+  dropout: 0.05
+
+data:
+  max_input_seq_length: ${policy.max_total_sequence_length}
+  prompt_file: null
+  system_prompt_file: null
+  shuffle: true
+  num_workers: 1
+
+  # JSONL-backed dataset: src/data_prep/csv_to_rl_jsonl.py emits
+  # {input, output, decision, p1_name, p2_name, reference_evidence}.
+  dataset_name: "ResponseDataset"
+  train_data_path: "data/rl/training.jsonl"
+  val_data_path: "data/rl/validation.jsonl"
+  input_key: "input"
+  output_key: "output"
+
+# env.<task_name> is passed to the matching env actor __init__ by our
+# experiment/rl_from_sft.py (task_name = "product_match").
+env:
+  product_match:
+    judge_url: "${oc.env:JUDGE_URL,http://localhost:8000/v1}"
+    judge_model: "${oc.env:JUDGE_MODEL,nemotron-3-super-120b}"
+    judge_max_tokens: 16
+    judge_timeout_s: 60.0
+    judge_temperature: 0.0
+    judge_fail_soft: true
+    log_dir: "artifacts/rl/nemotron-30b/generations"
+
+logger:
+  log_dir: "artifacts/rl/nemotron-30b/logs"
+  num_val_samples_to_print: 4
+  wandb_enabled: true
+  tensorboard_enabled: true
+  mlflow_enabled: false
+  swanlab_enabled: false
+  monitor_gpus: true
+  wandb:
+    project: "nemotron-agentlemen-rl"
+    name: "rl-from-sft"
+  tensorboard: {}
+  mlflow:
+    experiment_name: "nemotron-agentlemen-rl"
+    run_name: "rl-from-sft"
+  gpu_monitoring:
+    collection_interval: 10
+    flush_interval: 10
+
+cluster:
+  gpus_per_node: 4                  # training on GPUs 0-3; judge uses 4-7
+  num_nodes: 1

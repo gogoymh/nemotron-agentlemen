@@ -1,0 +1,18 @@
+[submodule "Nemotron"]
+	path = Nemotron
+	url = https://github.com/NVIDIA-NeMo/Nemotron.git
+[submodule "DataDesigner"]
+	path = DataDesigner
+	url = https://github.com/NVIDIA-NeMo/DataDesigner.git
+[submodule "Curator"]
+	path = Curator
+	url = https://github.com/NVIDIA-NeMo/Curator.git
+[submodule "Megatron-Bridge"]
+	path = Megatron-Bridge
+	url = https://github.com/NVIDIA-NeMo/Megatron-Bridge.git
+[submodule "RL"]
+	path = RL
+	url = https://github.com/NVIDIA-NeMo/RL.git
+[submodule "nemo-gym"]
+	path = nemo-gym
+	url = https://github.com/NVIDIA-NeMo/Gym.git

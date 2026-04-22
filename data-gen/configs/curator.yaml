@@ -1,0 +1,64 @@
+# Stage A — Curator config (data_plan.md §Curator).
+# Paths are resolved relative to repo root via common.io.repo_root().
+
+io:
+  raw_jsonl: dataset/get_data/raw.jsonl         # ~10M unlabeled product listings
+  labeled_jsonl: dataset/labeled/labeled.jsonl  # 12k labeled — used only for A.4 decontam source union
+  v2_root: dataset/v2
+  curated_out: dataset/v2/raw_curated/full.jsonl
+  cache_dir: dataset/v2/_cache/curator
+
+# Columns on the raw JSONL (one product listing per row).
+schema:
+  id_field: listing_id
+  text_field: product_name       # raw, noisy title with promo tags/emoji
+  brand_field: brand             # optional; kept for stratification
+  platform_field: platform       # e.g. "coupang", "naver", ...
+
+# A.1 Fuzzy dedup — MinHash LSH, Jaccard ~0.8.
+fuzzy_dedup:
+  char_ngrams: 24
+  num_bands: 20
+  minhashes_per_band: 13
+  # keep a single representative per cluster; representative = shortest clean title
+  representative: shortest_clean
+
+# A.2 Quality filter — fastText trained on labeled confidence ≥0.9 / ≤0.3.
+quality_filter:
+  fasttext_model: dataset/v2/_cache/quality_ft.bin
+  min_quality: 0.5
+  # Pareto-style threshold exponent from data_plan.md (Pareto α=3).
+  pareto_alpha: 3.0
+  score_field: quality_score
+  # A labeled subset used to auto-train the fastText model if it's missing.
+  train_from_labeled_if_missing: true
+  hq_conf_min: 0.90
+  lq_conf_max: 0.30
+
+# A.3 Text modifier — emit `product_name_clean` alongside original.
+text_modifier:
+  clean_field: product_name_clean
+  # Strip bracketed promo tags, emoji, and common marketing prefixes.
+  strip_patterns:
+    - '\[[^\]]{1,40}\]'            # [쿠폰할인], [무료배송], ...
+    - '【[^】]{1,40}】'
+    - '\([^)]{1,40}\)'             # light; only removed if all-promo tokens
+  strip_emoji: true
+  strip_marketing_prefix:
+    - '무료배송'
+    - '당일발송'
+    - '쿠폰'
+    - '할인'
+
+# A.4 Exact-match decontamination against v2 val/test pairs.
+decontam:
+  val_jsonl: dataset/v2/sft/val.jsonl
+  test_jsonl: dataset/v2/sft/test.jsonl
+  # Drop any raw row whose product_name (or its clean variant) exactly matches
+  # either side of a val/test pair.
+  union_fields: [p1_name, p2_name]
+
+# Executor — xenna (Ray-based) on-box, falls back to local threadpool off-GPU.
+executor:
+  backend: xenna                   # one of: xenna, ray, local
+  num_workers: 32

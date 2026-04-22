@@ -1,0 +1,55 @@
+# demo/env — Product Matching RL environment config.
+# Env-var overrides use ${VAR:-default} syntax (parsed by demo/env/config.py).
+
+env:
+  host: 127.0.0.1
+  port: 18200
+  cache_dir: demo/cache
+  live_scraping: false         # true ⇒ Playwright live fallback when cache misses
+  use_system_chrome: true
+  platforms:
+    - naver
+    - ohouse
+    - eleventh_street
+    - emartinternetshopping
+    - shinsegaemall
+    - lotteon
+
+# Frozen GenRM judge used to score submit_match calls.
+# Default: Nemotron-3-Super-120B-A12B (MoE, BF16) via a local vLLM endpoint.
+#
+# Serve with (example):
+#   vllm serve nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16 \
+#     --served-model-name nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16 --port 8001
+judge:
+  base_url:    ${JUDGE_MODEL_URL:-http://localhost:8001/v1}
+  model_name:  ${JUDGE_MODEL_NAME:-nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-BF16}
+  api_key:     ${JUDGE_MODEL_KEY:-dummy}
+  timeout_s: 60
+  max_tokens: 512
+  temperature: 0.0
+  mock: false                  # true ⇒ MockMatchModel (jaccard), no vLLM needed
+  concurrency: 8
+
+# Policy being trained. vLLM OpenAI-compatible chat/completions endpoint.
+policy:
+  base_url:   ${POLICY_MODEL_URL:-http://localhost:8000/v1}
+  model_name: ${POLICY_MODEL_NAME:-nemotron-match}
+  api_key:    ${POLICY_MODEL_KEY:-dummy}
+  timeout_s: 120
+  max_tokens: 1024
+  temperature: 1.0
+
+# Reward weights. See demo/env/reward.py for the combined formula.
+reward:
+  alpha: 0.5
+  beta: 0.25
+  gamma: 0.25
+  delta: 0.05
+  min_positive_bonus: 0.1
+  no_submit_penalty: 0.0
+
+episode:
+  max_turns: 16
+  max_tool_calls_per_turn: 4
+  max_output_chars: 6000

@@ -1,0 +1,54 @@
+{
+  "_comment": "Fanout 데모용 SKU 프리셋. 영상 촬영 시 id만 지정하면 sku/query/platforms가 자동 세팅.",
+  "_fields": {
+    "id": "식별자 (CLI --preset 값)",
+    "sku_name": "원본 SKU 타이틀 (모델 매칭 기준)",
+    "query": "브라우저 검색창 입력어 (SKU보다 더 짧고 일반적)",
+    "platforms": "쉼표 구분 없이 리스트. 지원: coupang,naver,musinsa,ohouse,gmarket,auction,shinsegaemall,lotteon,hmall,gsshop,eleventh_street,emartinternetshopping",
+    "notes": "(선택) 시연 포인트"
+  },
+  "presets": [
+    {
+      "id": "pillow",
+      "sku_name": "데시뉴 에센스 항균 누빔 베개커버 40x60 50x70 11컬러 2개세트",
+      "query": "데시뉴 항균 누빔 베개커버",
+      "platforms": ["naver", "eleventh_street", "ohouse", "emartinternetshopping", "shinsegaemall", "lotteon"],
+      "notes": "6개 사이트 fanout · 색상·사이즈 변형 매칭 시연 (쿠팡/옥션/지마켓 제외)"
+    },
+    {
+      "id": "cooling-pillow",
+      "sku_name": "이블랑 듀라론 휴비스 써니 냉감 여름 베개커버 50x70",
+      "query": "듀라론 써니 냉감 베개커버 50x70",
+      "platforms": ["naver", "emartinternetshopping", "eleventh_street", "ohouse", "shinsegaemall", "lotteon"],
+      "notes": "브랜드 일치 중심 · 대형 오픈마켓 + 가구몰"
+    },
+    {
+      "id": "tshirt",
+      "sku_name": "무신사 스탠다드 오버사이즈 크루넥 반팔 티셔츠 블랙",
+      "query": "무신사 스탠다드 오버사이즈 티셔츠",
+      "platforms": ["musinsa", "naver", "eleventh_street", "lotteon"],
+      "notes": "패션 · 색상 옵션 다수"
+    },
+    {
+      "id": "sofa",
+      "sku_name": "무신사 스탠다드 3인용 패브릭 소파 그레이",
+      "query": "무신사 스탠다드 3인용 패브릭 소파",
+      "platforms": ["naver", "musinsa", "ohouse", "emartinternetshopping"],
+      "notes": "가구 · 대표 상품 · 색상 변형"
+    },
+    {
+      "id": "duvet",
+      "sku_name": "까사미아 두두 60수 모달 차렵이불세트 SS",
+      "query": "까사미아 두두 모달 차렵이불",
+      "platforms": ["naver", "lotteon", "emartinternetshopping", "ohouse", "shinsegaemall", "eleventh_street"],
+      "notes": "브랜드 상품 · 롯데온/SSG 같은 대형 몰 포함"
+    },
+    {
+      "id": "mat",
+      "sku_name": "리프 욕실 현관 화장실 주방 발매트_40x120cm",
+      "query": "리프 욕실 발매트 40x120",
+      "platforms": ["naver", "gsshop", "emartinternetshopping", "ohouse", "eleventh_street"],
+      "notes": "생활용품 · 사이즈 스펙 매칭"
+    }
+  ]
+}

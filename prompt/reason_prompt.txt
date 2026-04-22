@@ -1,0 +1,29 @@
+You are a product-title matching analyst.
+
+Task:
+Given two product names, decide whether they refer to the same sellable product variant.
+- Product A: {p1_name}
+- Product B: {p2_name}
+
+Important constraints:
+1. Do NOT use any external label column or hidden metadata. Decide only from the two product names.
+2. Compare step by step before concluding.
+3. Treat differences in model code, capacity, size, color, quantity, option, bundle 구성(세트/단품), edition/origin/version as potentially critical.
+4. Ignore minor wording differences such as spacing, punctuation, seller prefix/brand prefix, and marketing words when core identity is still the same.
+5. If core product identity or key variant conflicts, output 0.
+6. If core product identity and key variant are consistent (or one side is only less specific without contradiction), output 1.
+
+Output format (must follow exactly, in one paragraph or multiple lines):
+First, <identify the core product/category and main tokens in both names>.
+Second, <compare brand/model line/model number and key identifiers>.
+Third, <compare variant attributes: size/color/count/spec/option/bundle, and check for conflicts>.
+So, the final answer is: <0 or 1>.
+
+Label meaning:
+- 1 = matched (same sellable product variant)
+- 0 = not matched (different product or conflicting variant)
+
+Expected Output:
+<reason>evidence</reason><label>0/1</label>
+
+

@@ -1,0 +1,27 @@
+# Core — PyTorch 2.7.0 (cxx11 ABI=True) so mamba-ssm prebuilt wheels load cleanly.
+torch==2.7.0
+
+# HF stack — pin to model's declared transformers version.
+transformers==4.55.4
+accelerate>=0.34.0
+tokenizers>=0.20.0
+safetensors>=0.4.5
+sentencepiece>=0.2.0
+
+# Nemotron-H hybrid (Mamba2 + attention) fast-path kernels.
+# Install AFTER torch==2.7.0 is present, from the prebuilt wheels:
+#   pip install --no-deps \
+#     https://github.com/Dao-AILab/causal-conv1d/releases/download/v1.6.1.post4/causal_conv1d-1.6.1%2Bcu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl \
+#     https://github.com/state-spaces/mamba/releases/download/v2.3.1/mamba_ssm-2.3.1%2Bcu12torch2.7cxx11abiTRUE-cp310-cp310-linux_x86_64.whl
+# Building from source requires matching torch + nvcc + libstdc++, so prefer the wheels.
+causal-conv1d==1.6.1
+mamba-ssm==2.3.1
+einops>=0.8
+ninja>=1.11
+
+# Data / retrieval / metrics.
+numpy>=1.26,<2.2
+pandas>=2.1
+tqdm>=4.66
+rank_bm25>=0.2.2
+matplotlib>=3.8
